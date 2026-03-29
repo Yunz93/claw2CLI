@@ -64,6 +64,8 @@ If this chat has already used a session before, `claw2cli` jumps back to that on
 
 If you are integrating from a clean OpenClaw Weixin setup, apply the plugin-side patch notes in [`WEIXIN_PLUGIN_PATCH.md`](./WEIXIN_PLUGIN_PATCH.md).
 
+> If you don't know how to adapt it，let codex fix it 🤣
+
 ## Requirements
 
 - macOS

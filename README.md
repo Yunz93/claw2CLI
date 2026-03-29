@@ -64,6 +64,8 @@ npm start
 
 如果你是从一个干净的 OpenClaw 微信环境接入，请按 [`WEIXIN_PLUGIN_PATCH.md`](./WEIXIN_PLUGIN_PATCH.md) 里的插件侧改动处理。
 
+> 如果不知道如何适配，让 codex 帮忙改一下 🤣
+
 ## 运行要求
 
 - macOS
