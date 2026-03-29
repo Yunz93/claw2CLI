@@ -1,0 +1,7 @@
+.DS_Store
+state/recent-sessions.json
+state/*.log
+state/*.db
+node_modules/
+state/*
+memory/*
