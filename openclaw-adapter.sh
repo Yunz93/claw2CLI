@@ -7,16 +7,16 @@ BRIDGE_URL="${MAC_CLI_BRIDGE_URL:-http://127.0.0.1:4317}"
 SESSION_ID="${1:-}"
 PROMPT="${2:-}"
 CWD="${3:-${MAC_CLI_BRIDGE_CWD:-$DEFAULT_PROJECT_ROOT}}"
-CODEX_SESSION_ID="${4:-}"
-BACKEND="${MAC_CLI_BRIDGE_BACKEND:-codex-exec}"
+CLI_SESSION_ID="${4:-}"
+BACKEND="${5:-${MAC_CLI_BRIDGE_BACKEND:-codex-exec}}"
 TIMEOUT_MS="${MAC_CLI_BRIDGE_TIMEOUT_MS:-120000}"
 
 if [[ -z "$SESSION_ID" || -z "$PROMPT" ]]; then
-  echo "usage: $0 <session_id> <prompt> [cwd] [codex_session_id]" >&2
+  echo "usage: $0 <session_id> <prompt> [cwd] [cli_session_id] [backend]" >&2
   exit 2
 fi
 
-OPEN_PAYLOAD="$(python3 - "$SESSION_ID" "$BACKEND" "$CWD" "$CODEX_SESSION_ID" <<'PY'
+OPEN_PAYLOAD="$(python3 - "$SESSION_ID" "$BACKEND" "$CWD" "$CLI_SESSION_ID" <<'PY'
 import json
 import sys
 

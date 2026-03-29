@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import readline from 'node:readline';
 
+import { normalizeBackendName } from './cli-backends.js';
 import { buildFinalText } from './final-text.js';
 
 const PORT = process.env.MAC_CLI_BRIDGE_PORT || 4317;
@@ -34,8 +35,20 @@ function processAlive(pid) {
   }
 }
 
+function ensureBackendSessionId(backend, codexSessionId) {
+  const rawBackend = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
+  if (rawBackend === 'codex-echo') return null;
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
+  if (normalizedBackend === 'codex') return codexSessionId || null;
+  if (codexSessionId) return codexSessionId;
+  return randomUUID();
+}
+
 function buildBackendCommand({ backend, cwd, codexSessionId }) {
-  if (backend === 'codex-echo') {
+  const rawBackend = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
+  const normalizedBackend = rawBackend === 'codex-echo' ? 'codex-echo' : normalizeBackendName(backend, 'codex');
+
+  if (rawBackend === 'codex-echo') {
     return {
       command: '/bin/cat',
       args: [],
@@ -44,7 +57,7 @@ function buildBackendCommand({ backend, cwd, codexSessionId }) {
     };
   }
 
-  if (backend === 'codex-exec') {
+  if (normalizedBackend === 'codex') {
     if (codexSessionId) {
       return {
         command: '/opt/homebrew/bin/codex',
@@ -74,6 +87,39 @@ function buildBackendCommand({ backend, cwd, codexSessionId }) {
       ],
       mode: 'oneshot',
       output: 'jsonl'
+      };
+  }
+
+  if (normalizedBackend === 'claude') {
+    const sessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
+    const resumeArg = codexSessionId ? '--resume' : '--session-id';
+    return {
+      command: '/bin/bash',
+      args: [
+        '-lc',
+        `prompt="$(cat)"; exec claude -p --output-format text --dangerously-skip-permissions ${resumeArg} "$CLI_SESSION_ID" "$prompt"`
+      ],
+      mode: 'oneshot',
+      output: 'raw',
+      env: {
+        CLI_SESSION_ID: sessionId
+      }
+    };
+  }
+
+  if (normalizedBackend === 'kimi') {
+    const sessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
+    return {
+      command: '/bin/bash',
+      args: [
+        '-lc',
+        'prompt="$(cat)"; exec kimi --quiet --session "$CLI_SESSION_ID" --prompt "$prompt"'
+      ],
+      mode: 'oneshot',
+      output: 'raw',
+      env: {
+        CLI_SESSION_ID: sessionId
+      }
     };
   }
 
@@ -143,6 +189,9 @@ function isStaleOneshot(state) {
 }
 
 function openSession({ sessionId, backend = 'codex-echo', cwd = process.cwd(), codexSessionId = null }) {
+  const rawBackend = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
+  const normalizedBackend = rawBackend === 'codex-echo' ? 'codex-echo' : normalizeBackendName(backend, 'codex');
+  const resolvedSessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
   if (sessions.has(sessionId)) {
     const existing = sessions.get(sessionId);
     if (
@@ -157,15 +206,20 @@ function openSession({ sessionId, backend = 'codex-echo', cwd = process.cwd(), c
     }
   }
 
-  const spec = buildBackendCommand({ backend, cwd, codexSessionId });
-  const child = spawn(spec.command, spec.args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const spec = buildBackendCommand({ backend: normalizedBackend, cwd, codexSessionId: resolvedSessionId });
+  const child = spawn(spec.command, spec.args, {
+    cwd,
+    env: { ...process.env, ...(spec.env || {}) },
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
   const state = {
     id: sessionId,
-    backend,
+    backend: rawBackend === 'codex-echo' ? 'codex-echo' : normalizedBackend,
     cwd,
-    codexSessionId,
+    codexSessionId: resolvedSessionId,
     mode: spec.mode,
     output: spec.output,
+    env: spec.env || {},
     pid: child.pid,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -233,6 +287,7 @@ const server = http.createServer(async (req, res) => {
         backend: s.backend,
         cwd: s.cwd,
         codexSessionId: s.codexSessionId,
+        env: s.env,
         mode: s.mode,
         pid: s.pid,
         closed: s.closed,
@@ -255,6 +310,7 @@ const server = http.createServer(async (req, res) => {
         backend: state.backend,
         cwd: state.cwd,
         codexSessionId: state.codexSessionId,
+        env: state.env,
         mode: state.mode,
         output: state.output
       });

@@ -2,7 +2,7 @@
 
 当前采用 **sidecar + adapter script** 的方式接入现有 OpenClaw 链路，而不是直接改 OpenClaw 源码。
 
-adapter 当前只支持会自行结束的 `oneshot` backend。
+adapter 当前只支持会自行结束的 `oneshot` backend，包括 Codex、Claude Code 和 Kimi。
 
 ## 组件
 

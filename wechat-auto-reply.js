@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 const triggerScriptPath = path.join(__dirname, 'wechat-trigger.js');
 
 const trimmed = text.trim();
-if (!trimmed.startsWith('/codex')) {
+if (!/^\/(codex|claude|cc|kimi)(?:\s|$)/i.test(trimmed)) {
   console.log(JSON.stringify({ ok: false, ignored: true, reason: 'missing_prefix' }, null, 2));
   process.exit(0);
 }

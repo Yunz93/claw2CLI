@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { normalizeBackendName } from './cli-backends.js';
+
 const STORE_VERSION = 1;
 const MAX_SESSION_COUNT = 100;
 const MAX_TURN_COUNT = 20;
@@ -32,10 +34,31 @@ function normalizeTurn(turn) {
   };
 }
 
+function getChatKey(chatId, backend) {
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
+  return `${normalizedBackend}:${chatId}`;
+}
+
+function splitChatKey(chatKey) {
+  if (typeof chatKey !== 'string') {
+    return { backend: 'codex', chatId: '' };
+  }
+
+  const separatorIndex = chatKey.indexOf(':');
+  if (separatorIndex <= 0) {
+    return { backend: 'codex', chatId: chatKey };
+  }
+
+  const backend = normalizeBackendName(chatKey.slice(0, separatorIndex), 'codex');
+  const chatId = chatKey.slice(separatorIndex + 1);
+  return { backend, chatId };
+}
+
 function normalizeSession(session) {
   if (!session || typeof session !== 'object') return null;
   const codexSessionId = typeof session.codexSessionId === 'string' ? session.codexSessionId.trim() : '';
   if (!codexSessionId) return null;
+  const backend = normalizeBackendName(session.backend, 'codex');
 
   const turns = Array.isArray(session.turns)
     ? session.turns.map(normalizeTurn).filter(Boolean).slice(-MAX_TURN_COUNT)
@@ -44,6 +67,7 @@ function normalizeSession(session) {
   return {
     codexSessionId,
     chatId: typeof session.chatId === 'string' ? session.chatId : '',
+    backend,
     cwd: typeof session.cwd === 'string' ? session.cwd : '',
     createdAt: clampPositiveInt(session.createdAt, Date.now()),
     activatedAt: clampPositiveInt(session.activatedAt, Date.now()),
@@ -53,12 +77,13 @@ function normalizeSession(session) {
 
 function dedupeSessionsByCwd(sessions) {
   const kept = [];
-  const seenCwds = new Set();
+  const seenKeys = new Set();
 
   for (const session of sessions) {
+    const key = `${normalizeBackendName(session.backend, 'codex')}:${session.cwd || ''}`;
+    if (session.cwd && seenKeys.has(key)) continue;
     if (session.cwd) {
-      if (seenCwds.has(session.cwd)) continue;
-      seenCwds.add(session.cwd);
+      seenKeys.add(key);
     }
     kept.push(session);
   }
@@ -80,8 +105,11 @@ function normalizeStore(data) {
   if (data.activeByChatId && typeof data.activeByChatId === 'object') {
     for (const [chatId, codexSessionId] of Object.entries(data.activeByChatId)) {
       if (typeof chatId !== 'string' || typeof codexSessionId !== 'string') continue;
-      if (!dedupedSessions.some(session => session.codexSessionId === codexSessionId)) continue;
-      activeByChatId[chatId] = codexSessionId;
+      const { backend, chatId: normalizedChatId } = splitChatKey(chatId);
+      if (!dedupedSessions.some(session => (
+        session.codexSessionId === codexSessionId && normalizeBackendName(session.backend, 'codex') === backend
+      ))) continue;
+      activeByChatId[getChatKey(normalizedChatId, backend)] = codexSessionId;
     }
   }
 
@@ -103,15 +131,17 @@ function mergeSessionRecords(...sessionLists) {
     for (const rawSession of sessionList || []) {
       const session = normalizeSession(rawSession);
       if (!session) continue;
-      const previous = merged.get(session.codexSessionId);
+      const key = `${normalizeBackendName(session.backend, 'codex')}:${session.codexSessionId}`;
+      const previous = merged.get(key);
       if (!previous) {
-        merged.set(session.codexSessionId, session);
+        merged.set(key, session);
         continue;
       }
 
-      merged.set(session.codexSessionId, {
+      merged.set(key, {
         codexSessionId: session.codexSessionId,
         chatId: previous.chatId || session.chatId,
+        backend: normalizeBackendName(previous.backend, 'codex'),
         cwd: previous.cwd || session.cwd,
         createdAt: Math.min(previous.createdAt, session.createdAt),
         activatedAt: Math.max(previous.activatedAt, session.activatedAt),
@@ -149,30 +179,33 @@ export function mergeAvailableSessions(store, discoveredSessions = []) {
   });
 }
 
-export function getRecentSessions(store, limit = 5) {
-  return normalizeStore(store).sessions.slice(0, clampPositiveInt(limit, 5));
-}
-
-export function getActiveSessionIdForChat(store, chatId) {
+export function getActiveSessionIdForChat(store, chatId, backend = 'codex') {
   const normalized = normalizeStore(store);
-  return normalized.activeByChatId[chatId] || null;
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
+  return normalized.activeByChatId[getChatKey(chatId, normalizedBackend)] || (
+    normalizedBackend === 'codex' ? normalized.activeByChatId[chatId] || null : null
+  );
 }
 
-export function getRecentSessionByIndex(store, index) {
-  const recentSessions = getRecentSessions(store, MAX_SESSION_COUNT);
+export function getRecentSessionByIndex(store, index, backend = null) {
+  const recentSessions = getRecentSessions(store, MAX_SESSION_COUNT, backend);
   const normalizedIndex = clampPositiveInt(index, 0);
   if (!normalizedIndex) return null;
   return recentSessions[normalizedIndex - 1] || null;
 }
 
-export function findSessionByCodexSessionId(store, codexSessionId) {
+export function findSessionByCodexSessionId(store, codexSessionId, backend = null) {
   if (!codexSessionId) return null;
-  return normalizeStore(store).sessions.find(session => session.codexSessionId === codexSessionId) || null;
+  return normalizeStore(store).sessions.find(session => (
+    session.codexSessionId === codexSessionId && (backend ? normalizeBackendName(session.backend, 'codex') === normalizeBackendName(backend, 'codex') : true)
+  )) || null;
 }
 
-export function findLatestSessionByCwd(store, cwd) {
+export function findLatestSessionByCwd(store, cwd, backend = null) {
   if (!cwd) return null;
-  return normalizeStore(store).sessions.find(session => session.cwd === cwd) || null;
+  return normalizeStore(store).sessions.find(session => (
+    session.cwd === cwd && (backend ? normalizeBackendName(session.backend, 'codex') === normalizeBackendName(backend, 'codex') : true)
+  )) || null;
 }
 
 export function getLastMessages(session, count = 2) {
@@ -180,20 +213,33 @@ export function getLastMessages(session, count = 2) {
   return (Array.isArray(session.turns) ? session.turns : []).slice(-clampPositiveInt(count, 2));
 }
 
-export function rememberActiveSession(store, { chatId, codexSessionId, cwd = '' }) {
+export function getRecentSessions(store, limit = 5, backend = null) {
+  const normalized = normalizeStore(store);
+  const sessions = backend
+    ? normalized.sessions.filter(session => normalizeBackendName(session.backend, 'codex') === normalizeBackendName(backend, 'codex'))
+    : normalized.sessions;
+  return sessions.slice(0, clampPositiveInt(limit, 5));
+}
+
+export function rememberActiveSession(store, { chatId, backend = 'codex', codexSessionId, cwd = '' }) {
   const normalized = normalizeStore(store);
   if (!chatId || !codexSessionId) return normalized;
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
 
   const now = Date.now();
-  const existing = normalized.sessions.find(session => session.codexSessionId === codexSessionId);
+  const existing = normalized.sessions.find(session => (
+    session.codexSessionId === codexSessionId && normalizeBackendName(session.backend, 'codex') === normalizedBackend
+  ));
   if (existing) {
     existing.chatId = chatId;
+    existing.backend = normalizedBackend;
     existing.cwd = cwd || existing.cwd;
     existing.activatedAt = now;
   } else {
     normalized.sessions.unshift({
       codexSessionId,
       chatId,
+      backend: normalizedBackend,
       cwd,
       createdAt: now,
       activatedAt: now,
@@ -203,11 +249,11 @@ export function rememberActiveSession(store, { chatId, codexSessionId, cwd = '' 
 
   if (cwd) {
     normalized.sessions = normalized.sessions.filter(session => (
-      session.codexSessionId === codexSessionId || session.cwd !== cwd
+      session.codexSessionId === codexSessionId || normalizeBackendName(session.backend, 'codex') !== normalizedBackend || session.cwd !== cwd
     ));
   }
 
-  normalized.activeByChatId[chatId] = codexSessionId;
+  normalized.activeByChatId[getChatKey(chatId, normalizedBackend)] = codexSessionId;
   normalized.sessions.sort((a, b) => b.activatedAt - a.activatedAt);
   normalized.sessions = dedupeSessionsByCwd(normalized.sessions).slice(0, MAX_SESSION_COUNT);
   return normalized;
@@ -215,15 +261,19 @@ export function rememberActiveSession(store, { chatId, codexSessionId, cwd = '' 
 
 export function recordSessionTurn(store, {
   chatId,
+  backend = 'codex',
   codexSessionId,
   cwd = '',
   userPrompt = '',
   assistantReply = ''
 }) {
-  const remembered = rememberActiveSession(store, { chatId, codexSessionId, cwd });
+  const remembered = rememberActiveSession(store, { chatId, backend, codexSessionId, cwd });
   if (!codexSessionId) return remembered;
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
 
-  const session = remembered.sessions.find(item => item.codexSessionId === codexSessionId);
+  const session = remembered.sessions.find(item => (
+    item.codexSessionId === codexSessionId && normalizeBackendName(item.backend, 'codex') === normalizedBackend
+  ));
   if (!session) return remembered;
 
   const now = Date.now();

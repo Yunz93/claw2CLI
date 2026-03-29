@@ -20,24 +20,28 @@ import {
 test('parseCodexCommand handles list, select, and plain prompt', () => {
   assert.deepEqual(parseCodexCommand('/codex'), {
     ok: true,
-    type: 'enter'
+    type: 'enter',
+    backend: 'codex'
   });
 
   assert.deepEqual(parseCodexCommand('/codex list'), {
     ok: true,
     type: 'list',
+    backend: 'codex',
     limit: 5
   });
 
   assert.deepEqual(parseCodexCommand('/codex list 9'), {
     ok: true,
     type: 'list',
+    backend: 'codex',
     limit: 9
   });
 
   assert.deepEqual(parseCodexCommand('/codex 2 继续'), {
     ok: true,
     type: 'select',
+    backend: 'codex',
     index: 2,
     prompt: '继续'
   });
@@ -45,6 +49,7 @@ test('parseCodexCommand handles list, select, and plain prompt', () => {
   assert.deepEqual(parseCodexCommand('/codex 3'), {
     ok: true,
     type: 'select',
+    backend: 'codex',
     index: 3,
     prompt: ''
   });
@@ -52,7 +57,30 @@ test('parseCodexCommand handles list, select, and plain prompt', () => {
   assert.deepEqual(parseCodexCommand('/codex 修 bug'), {
     ok: true,
     type: 'prompt',
+    backend: 'codex',
     prompt: '修 bug'
+  });
+
+  assert.deepEqual(parseCodexCommand('/claude list 2'), {
+    ok: true,
+    type: 'list',
+    backend: 'claude',
+    limit: 2
+  });
+
+  assert.deepEqual(parseCodexCommand('/cc list 3'), {
+    ok: true,
+    type: 'list',
+    backend: 'claude',
+    limit: 3
+  });
+
+  assert.deepEqual(parseCodexCommand('/kimi 7'), {
+    ok: true,
+    type: 'select',
+    backend: 'kimi',
+    index: 7,
+    prompt: ''
   });
 });
 
@@ -63,12 +91,14 @@ test('session store tracks active session and recent messages', () => {
     sessions: []
   }, {
     chatId: 'chat-a',
+    backend: 'codex',
     codexSessionId: 'thread-1',
     cwd: '/tmp/a'
   });
 
   store = recordSessionTurn(store, {
     chatId: 'chat-a',
+    backend: 'codex',
     codexSessionId: 'thread-1',
     cwd: '/tmp/a',
     userPrompt: '第一问',
@@ -77,6 +107,7 @@ test('session store tracks active session and recent messages', () => {
 
   store = recordSessionTurn(store, {
     chatId: 'chat-b',
+    backend: 'codex',
     codexSessionId: 'thread-2',
     cwd: '/tmp/b',
     userPrompt: '第二问',
@@ -93,7 +124,7 @@ test('session store tracks active session and recent messages', () => {
   );
 });
 
-test('session store keeps only the most recently active session per cwd', () => {
+test('session store keeps backend-specific sessions separate per cwd', () => {
   let store = {
     version: 1,
     activeByChatId: {},
@@ -102,6 +133,7 @@ test('session store keeps only the most recently active session per cwd', () => 
 
   store = recordSessionTurn(store, {
     chatId: 'chat-a',
+    backend: 'codex',
     codexSessionId: 'thread-1',
     cwd: '/same/project',
     userPrompt: '旧会话',
@@ -110,25 +142,37 @@ test('session store keeps only the most recently active session per cwd', () => 
 
   store = recordSessionTurn(store, {
     chatId: 'chat-a',
+    backend: 'claude',
     codexSessionId: 'thread-2',
     cwd: '/same/project',
-    userPrompt: '新会话',
-    assistantReply: '新回答'
+    userPrompt: 'Claude 会话',
+    assistantReply: 'Claude 回答'
   });
 
   store = recordSessionTurn(store, {
     chatId: 'chat-a',
+    backend: 'codex',
     codexSessionId: 'thread-3',
+    cwd: '/same/project',
+    userPrompt: '新 Codex 会话',
+    assistantReply: '新 Codex 回答'
+  });
+
+  store = recordSessionTurn(store, {
+    chatId: 'chat-a',
+    backend: 'kimi',
+    codexSessionId: 'thread-4',
     cwd: '/other/project',
-    userPrompt: '别的目录',
-    assistantReply: '别的回答'
+    userPrompt: 'Kimi 会话',
+    assistantReply: 'Kimi 回答'
   });
 
   const recentSessions = getRecentSessions(store, 5);
-  assert.equal(recentSessions.length, 2);
+  assert.equal(recentSessions.length, 3);
   assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-1'), false);
-  assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-2'), true);
-  assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-3'), true);
+  assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-2' && session.backend === 'claude'), true);
+  assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-3' && session.backend === 'codex'), true);
+  assert.equal(recentSessions.some(session => session.codexSessionId === 'thread-4' && session.backend === 'kimi'), true);
 });
 
 test('mergeAvailableSessions falls back to discovered codex sessions', () => {
@@ -140,6 +184,7 @@ test('mergeAvailableSessions falls back to discovered codex sessions', () => {
     {
       codexSessionId: 'thread-a',
       chatId: '',
+      backend: 'codex',
       cwd: '/same/project',
       createdAt: 1,
       activatedAt: 1000,
@@ -148,6 +193,7 @@ test('mergeAvailableSessions falls back to discovered codex sessions', () => {
     {
       codexSessionId: 'thread-b',
       chatId: '',
+      backend: 'codex',
       cwd: '/same/project',
       createdAt: 2,
       activatedAt: 2000,
@@ -156,6 +202,7 @@ test('mergeAvailableSessions falls back to discovered codex sessions', () => {
     {
       codexSessionId: 'thread-c',
       chatId: '',
+      backend: 'claude',
       cwd: '/other/project',
       createdAt: 3,
       activatedAt: 3000,
@@ -166,7 +213,9 @@ test('mergeAvailableSessions falls back to discovered codex sessions', () => {
   const recentSessions = getRecentSessions(merged, 5);
   assert.equal(recentSessions.length, 2);
   assert.equal(recentSessions[0].codexSessionId, 'thread-c');
+  assert.equal(recentSessions[0].backend, 'claude');
   assert.equal(recentSessions[1].codexSessionId, 'thread-b');
+  assert.equal(recentSessions[1].backend, 'codex');
 });
 
 test('render helpers expose numbered sessions and selected preview', () => {
@@ -178,6 +227,7 @@ test('render helpers expose numbered sessions and selected preview', () => {
 
   store = recordSessionTurn(store, {
     chatId: 'chat-a',
+    backend: 'codex',
     codexSessionId: 'thread-1',
     cwd: '/tmp/a',
     userPrompt: '帮我看下日志',
@@ -185,8 +235,8 @@ test('render helpers expose numbered sessions and selected preview', () => {
   });
 
   const session = getRecentSessionByIndex(store, 1);
-  const listText = renderSessionList(getRecentSessions(store, 5), 'thread-1');
-  const previewText = renderSelectedSessionPreview(session);
+  const listText = renderSessionList(getRecentSessions(store, 5, 'codex'), 'thread-1');
+  const previewText = renderSelectedSessionPreview(session, { commandPrefix: '/codex' });
   const adapterPrompt = buildAdapterPrompt({
     userPrompt: '继续查',
     selectedSession: session,
@@ -194,10 +244,26 @@ test('render helpers expose numbered sessions and selected preview', () => {
   });
 
   assert.match(listText, /1\./);
+  assert.match(listText, /后端: Codex/);
   assert.match(listText, /session_id:/);
   assert.match(listText, /工作空间:/);
   assert.match(listText, /\[当前\]/);
   assert.match(listText, /最后一条消息: .*?\n\n发 `\/codex 编号`/s);
+  assert.match(previewText, /Codex session/);
   assert.match(previewText, /最后两条消息/);
   assert.equal(adapterPrompt, '继续查');
+
+  store = recordSessionTurn(store, {
+    chatId: 'chat-b',
+    backend: 'claude',
+    codexSessionId: 'thread-2',
+    cwd: '/tmp/b',
+    userPrompt: '继续排查',
+    assistantReply: '我接着看'
+  });
+
+  const claudeSession = getRecentSessionByIndex(store, 1, 'claude');
+  const claudePreview = renderSelectedSessionPreview(claudeSession);
+  assert.match(claudePreview, /Claude Code session/);
+  assert.match(claudePreview, /`\/cc 你的消息`/);
 });

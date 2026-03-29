@@ -1,5 +1,10 @@
 import path from 'node:path';
 
+import {
+  getBackendCommandPrefix,
+  getBackendDisplayName,
+  normalizeBackendName
+} from './cli-backends.js';
 import { getLastMessages, truncatePreview } from './session-store.js';
 
 function formatTimestamp(timestamp) {
@@ -24,15 +29,21 @@ function formatWorkspaceLabel(session) {
   return `${base} (${session.cwd})`;
 }
 
+function buildSelectionHint(commandPrefix) {
+  return `发 \`${commandPrefix} 编号\` 进入目标 session，或发 \`${commandPrefix} 编号 你的新消息\` 直接续聊。`;
+}
+
 export function parseCodexCommand(text) {
   const trimmed = text.trim();
-  if (!trimmed.startsWith('/codex')) {
+  const commandMatch = trimmed.match(/^\/(codex|claude|cc|kimi)(?:\s+([\s\S]*))?$/i);
+  if (!commandMatch) {
     return { ok: false, reason: 'missing_prefix' };
   }
 
-  const body = trimmed.replace(/^\/codex\s*/, '').trim();
+  const backend = normalizeBackendName(commandMatch[1], 'codex');
+  const body = (commandMatch[2] || '').trim();
   if (!body) {
-    return { ok: true, type: 'enter' };
+    return { ok: true, type: 'enter', backend };
   }
 
   const listMatch = body.match(/^list(?:\s+(\d+))?$/i);
@@ -40,6 +51,7 @@ export function parseCodexCommand(text) {
     return {
       ok: true,
       type: 'list',
+      backend,
       limit: listMatch[1] ? Number.parseInt(listMatch[1], 10) : 5
     };
   }
@@ -49,6 +61,7 @@ export function parseCodexCommand(text) {
     return {
       ok: true,
       type: 'select',
+      backend,
       index: Number.parseInt(selectMatch[1], 10),
       prompt: (selectMatch[2] || '').trim()
     };
@@ -57,6 +70,7 @@ export function parseCodexCommand(text) {
   return {
     ok: true,
     type: 'prompt',
+    backend,
     prompt: body
   };
 }
@@ -64,11 +78,12 @@ export function parseCodexCommand(text) {
 export function renderSessionList(sessions, activeSessionId = null, options = {}) {
   const {
     preface = null,
-    selectionHint = '发 `/codex 编号` 进入目标 session，或发 `/codex 编号 你的新消息` 直接续聊。'
+    commandPrefix = '/codex',
+    selectionHint = null
   } = options;
 
   if (!sessions.length) {
-    return '没有发现可用的 mac Codex session。';
+    return '没有发现可用的 mac CLI session。';
   }
 
   const lines = [];
@@ -78,7 +93,9 @@ export function renderSessionList(sessions, activeSessionId = null, options = {}
     const currentMark = session.codexSessionId === activeSessionId ? ' [当前]' : '';
     const lastMessage = getLastMessages(session, 1)[0] || null;
     const preview = lastMessage ? formatMessageLine(lastMessage) : '无历史消息';
+    const backendLabel = getBackendDisplayName(session.backend);
     lines.push(`${index + 1}.${currentMark}`);
+    lines.push(`后端: ${backendLabel}`);
     lines.push(`session_id: ${session.codexSessionId}`);
     lines.push(`工作空间: ${formatWorkspaceLabel(session)}`);
     lines.push(`上次激活: ${formatTimestamp(session.activatedAt)}`);
@@ -88,15 +105,25 @@ export function renderSessionList(sessions, activeSessionId = null, options = {}
   if (selectionHint) {
     lines.push('');
     lines.push(selectionHint);
+  } else if (commandPrefix) {
+    lines.push('');
+    lines.push(buildSelectionHint(commandPrefix));
   }
   return lines.join('\n');
 }
 
-export function renderSelectedSessionPreview(session) {
+export function renderSelectedSessionPreview(session, options = {}) {
+  const {
+    commandPrefix = getBackendCommandPrefix(session?.backend),
+    intro = null
+  } = options;
   const lastMessages = getLastMessages(session, 2);
-  const lines = [
-    `已切到 session ${truncatePreview(session.codexSessionId, 24)}。`
-  ];
+  const backendLabel = getBackendDisplayName(session?.backend);
+  const lines = [];
+
+  if (intro) lines.push(intro);
+  lines.push(`已切到 ${backendLabel} session ${truncatePreview(session.codexSessionId, 24)}。`);
+  lines.push(`工作空间: ${formatWorkspaceLabel(session)}`);
 
   if (!lastMessages.length) {
     lines.push('这个 session 还没有保存的最近消息。');
@@ -107,7 +134,7 @@ export function renderSelectedSessionPreview(session) {
     }
   }
 
-  lines.push('现在直接发 `/codex 你的消息` 就会继续这个 session。');
+  lines.push(`现在直接发 \`${commandPrefix} 你的消息\` 就会继续这个 session。`);
   return lines.join('\n');
 }
 

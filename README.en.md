@@ -1,12 +1,12 @@
 # claw2cli
 
-Local CLI bridge for Codex in WeChat.
+Local CLI bridge for Codex, Claude Code, and Kimi in WeChat.
 
 中文说明见 [`README.md`](./README.md).
 
 ## What it is
 
-`claw2cli` lets you use Codex through WeChat on macOS. It keeps the chat flow in OpenClaw and routes `/codex` commands to a local CLI session.
+`claw2cli` lets you use Codex, Claude Code, or Kimi through WeChat on macOS. It keeps the chat flow in OpenClaw and routes `/codex`, `/cc`, `/claude`, and `/kimi` commands to local CLI sessions.
 
 This project is not standalone. It requires OpenClaw and the Weixin channel plugin.
 
@@ -23,8 +23,8 @@ This project is not standalone. It requires OpenClaw and the Weixin channel plug
 
 ## What it can do
 
-- Start a Codex session from WeChat
-- List recent Codex sessions on your Mac
+- Start a Codex, Claude Code, or Kimi session from WeChat
+- List recent sessions for the selected backend on your Mac
 - Re-enter the last session used by the same chat
 - Switch sessions by number and continue the conversation
 - Show a clean preview of the target session before you continue
@@ -34,8 +34,8 @@ This project is not standalone. It requires OpenClaw and the Weixin channel plug
 - Tested with OpenClaw `2026.3.12 (6472949)`
 - Tested with `@tencent-weixin/openclaw-weixin` `1.0.2`
 - You need the `openclaw` CLI available locally
-- You need the Weixin channel installed and logged in before `/codex` can work
-- The Weixin plugin must delegate `/codex` handling to `claw2cli`
+- You need the Weixin channel installed and logged in before `/codex`, `/cc`, `/claude`, or `/kimi` can work
+- The Weixin plugin must delegate these commands to `claw2cli`
 
 ## How to use
 
@@ -56,11 +56,14 @@ If this chat has already used a session before, `claw2cli` jumps back to that on
 /codex list
 /codex 2
 /codex 2 help me continue the earlier investigation
+/cc list
+/claude list
+/kimi 2
 ```
 
 ## Weixin side setup
 
-`openclaw-weixin` is the transport layer. It stays responsible for login, message delivery, and active mode switching, while `/codex` session policy lives in `claw2cli`.
+`openclaw-weixin` is the transport layer. It stays responsible for login, message delivery, and active mode switching, while `/codex`, `/cc`, `/claude`, and `/kimi` session policy lives in `claw2cli`.
 
 If you are integrating from a clean OpenClaw Weixin setup, apply the plugin-side patch notes in [`WEIXIN_PLUGIN_PATCH.md`](./WEIXIN_PLUGIN_PATCH.md).
 
@@ -70,7 +73,7 @@ If you are integrating from a clean OpenClaw Weixin setup, apply the plugin-side
 
 - macOS
 - Node.js 18+
-- Codex CLI installed for `codex-exec`
+- Codex CLI, Claude Code CLI, and Kimi CLI installed for the backends you plan to use
 - OpenClaw installed and the Weixin channel enabled
 
 ## More details

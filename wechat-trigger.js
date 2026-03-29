@@ -4,7 +4,14 @@ import { statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { discoverCodexSessions } from './src/codex-discovery.js';
+import {
+  discoverAvailableSessions
+} from './src/codex-discovery.js';
+import {
+  getBackendCommandPrefix,
+  getBackendDisplayName,
+  normalizeBackendName
+} from './src/cli-backends.js';
 import {
   findLatestSessionByCwd,
   findSessionByCodexSessionId,
@@ -25,7 +32,7 @@ import {
 } from './src/wechat-command.js';
 
 function usage() {
-  console.error('usage: wechat-trigger.js <chat_id> <text> [cwd] [codex_session_id]');
+  console.error('usage: wechat-trigger.js <chat_id> <text> [cwd] [session_id]');
   process.exit(2);
 }
 
@@ -53,12 +60,16 @@ function getProjectName(cwd) {
 
 function buildMeta({
   commandType,
+  backend = 'codex',
   modeAction = 'keep',
   cwd = '',
   codexSessionId = null
 }) {
   return {
     handledBy: 'claw2cli',
+    backend,
+    commandPrefix: getBackendCommandPrefix(backend),
+    backendLabel: getBackendDisplayName(backend),
     commandType,
     modeAction,
     cwd: cwd || null,
@@ -116,21 +127,24 @@ async function main() {
     process.exit(0);
   }
 
+  const backend = normalizeBackendName(command.backend, 'codex');
+  const commandPrefix = getBackendCommandPrefix(backend);
+  const backendLabel = getBackendDisplayName(backend);
+
   const sessionId = `wx:${chatId}`;
   const store = await loadSessionStore(__dirname);
-  const discoveredSessions = discoverCodexSessions();
-  const systemStore = mergeAvailableSessions({ version: 1, activeByChatId: {}, sessions: [] }, discoveredSessions);
+  const discoveredSessions = discoverAvailableSessions();
   const availableStore = mergeAvailableSessions(store, discoveredSessions);
-  const persistedActiveSessionId = getActiveSessionIdForChat(store, chatId);
-  const explicitCodexSessionId = codexSessionIdArg || persistedActiveSessionId || '';
+  const persistedActiveSessionId = getActiveSessionIdForChat(store, chatId, backend);
+  const explicitSessionId = codexSessionIdArg || persistedActiveSessionId || '';
 
   if (command.type === 'enter') {
-    const activeSession = findSessionByCodexSessionId(availableStore, explicitCodexSessionId);
+    const activeSession = findSessionByCodexSessionId(availableStore, explicitSessionId, backend);
     if (!activeSession) {
-      const recentSessions = getRecentSessions(systemStore, 5);
+      const recentSessions = getRecentSessions(availableStore, 5, backend);
       const finalText = renderSessionList(recentSessions, null, {
-        preface: '这是第一次在这个微信会话里用 bridge，先选一个 mac 上已有的 Codex session。',
-        selectionHint: '回复 `/codex 编号` 进入目标 session。'
+        preface: `这是第一次在这个微信会话里用 bridge，先选一个 mac 上已有的 ${backendLabel} session。`,
+        commandPrefix
       });
       printHandledResponse({
         sessionId,
@@ -138,6 +152,7 @@ async function main() {
         finalText,
         meta: buildMeta({
           commandType: 'enter',
+          backend,
           modeAction: 'keep',
           cwd,
           codexSessionId: null
@@ -150,6 +165,7 @@ async function main() {
     const nextCodexSessionId = activeSession.codexSessionId;
     const updatedStore = rememberActiveSession(store, {
       chatId,
+      backend,
       codexSessionId: nextCodexSessionId,
       cwd: nextCwd
     });
@@ -158,9 +174,13 @@ async function main() {
     printHandledResponse({
       sessionId,
       codexSessionId: nextCodexSessionId,
-      finalText: `Codex 已接入上次 bridge 使用的 session ${nextCodexSessionId}，工作空间：${getProjectName(nextCwd) || '-'}。接下来直接发消息就行，发 /exit 退出。`,
+      finalText: renderSelectedSessionPreview(activeSession, {
+        commandPrefix,
+        intro: `${backendLabel} 已接入上次 bridge 使用的 session ${nextCodexSessionId}，接下来直接发消息就行，发 /exit 退出。`
+      }),
       meta: buildMeta({
         commandType: 'enter',
+        backend,
         modeAction: 'enable',
         cwd: nextCwd,
         codexSessionId: nextCodexSessionId
@@ -170,14 +190,17 @@ async function main() {
   }
 
   if (command.type === 'list') {
-    const recentSessions = getRecentSessions(systemStore, command.limit || 5);
-    const finalText = renderSessionList(recentSessions, persistedActiveSessionId);
+    const recentSessions = getRecentSessions(availableStore, command.limit || 5, backend);
+    const finalText = renderSessionList(recentSessions, persistedActiveSessionId, {
+      commandPrefix
+    });
     printHandledResponse({
       sessionId,
       codexSessionId: persistedActiveSessionId,
       finalText,
       meta: buildMeta({
         commandType: 'list',
+        backend,
         modeAction: 'keep',
         cwd,
         codexSessionId: persistedActiveSessionId
@@ -187,21 +210,22 @@ async function main() {
   }
 
   let targetSession = null;
-  let targetCodexSessionId = explicitCodexSessionId;
+  let targetCodexSessionId = explicitSessionId;
   let userPrompt = '';
   let prompt = '';
   let targetCwd = cwd;
   let metaCommandType = command.type;
 
   if (command.type === 'select') {
-    targetSession = getRecentSessionByIndex(systemStore, command.index);
+    targetSession = getRecentSessionByIndex(availableStore, command.index, backend);
     if (!targetSession) {
       printHandledResponse({
         sessionId,
         codexSessionId: persistedActiveSessionId,
-        finalText: `没找到编号 ${command.index} 的 session。先发 \`/codex list\` 看看。`,
+        finalText: `没找到编号 ${command.index} 的 session。先发 \`${commandPrefix} list\` 看看。`,
         meta: buildMeta({
           commandType: 'select',
+          backend,
           modeAction: 'keep',
           cwd,
           codexSessionId: persistedActiveSessionId
@@ -214,6 +238,7 @@ async function main() {
     targetCwd = targetSession.cwd || cwd;
     const updatedStore = rememberActiveSession(store, {
       chatId,
+      backend,
       codexSessionId: targetCodexSessionId,
       cwd: targetCwd
     });
@@ -223,9 +248,10 @@ async function main() {
       printHandledResponse({
         sessionId,
         codexSessionId: targetCodexSessionId,
-        finalText: renderSelectedSessionPreview(targetSession),
+        finalText: renderSelectedSessionPreview(targetSession, { commandPrefix }),
         meta: buildMeta({
           commandType: 'select',
+          backend,
           modeAction: 'enable',
           cwd: targetCwd,
           codexSessionId: targetCodexSessionId
@@ -241,13 +267,14 @@ async function main() {
       includeSelectedContext: true
     });
   } else {
-    const directSession = findSessionByCodexSessionId(systemStore, command.prompt);
+    const directSession = findSessionByCodexSessionId(availableStore, command.prompt, backend);
     if (directSession) {
       targetSession = directSession;
       targetCodexSessionId = directSession.codexSessionId;
       targetCwd = directSession.cwd || cwd;
       const updatedStore = rememberActiveSession(store, {
         chatId,
+        backend,
         codexSessionId: targetCodexSessionId,
         cwd: targetCwd
       });
@@ -255,9 +282,10 @@ async function main() {
       printHandledResponse({
         sessionId,
         codexSessionId: targetCodexSessionId,
-        finalText: renderSelectedSessionPreview(directSession),
+        finalText: renderSelectedSessionPreview(directSession, { commandPrefix }),
         meta: buildMeta({
           commandType: 'session_id',
+          backend,
           modeAction: 'enable',
           cwd: targetCwd,
           codexSessionId: targetCodexSessionId
@@ -270,11 +298,12 @@ async function main() {
     if (project) {
       metaCommandType = 'project';
       targetCwd = project.cwd;
-      const latestProjectSession = findLatestSessionByCwd(systemStore, project.cwd);
+      const latestProjectSession = findLatestSessionByCwd(availableStore, project.cwd, backend);
       targetCodexSessionId = latestProjectSession?.codexSessionId || null;
       if (targetCodexSessionId) {
         const updatedStore = rememberActiveSession(store, {
           chatId,
+          backend,
           codexSessionId: targetCodexSessionId,
           cwd: project.cwd
         });
@@ -282,14 +311,18 @@ async function main() {
       }
 
       const finalText = latestProjectSession
-        ? `已切到项目 ${project.projectName}，并接入 session ${latestProjectSession.codexSessionId}。接下来直接发消息就行，发 /exit 退出。`
-        : `已切到项目 ${project.projectName}。当前没有历史 session，下一条消息会新开 session，发 /exit 退出。`;
+        ? renderSelectedSessionPreview(latestProjectSession, {
+            commandPrefix,
+            intro: `已切到项目 ${project.projectName}，并接入 ${backendLabel} session ${latestProjectSession.codexSessionId}。接下来直接发消息就行，发 /exit 退出。`
+          })
+        : `已切到项目 ${project.projectName}。当前没有历史 session，下一条消息会新开 ${backendLabel} session，发 /exit 退出。`;
       printHandledResponse({
         sessionId,
         codexSessionId: targetCodexSessionId,
         finalText,
         meta: buildMeta({
           commandType: 'project',
+          backend,
           modeAction: 'enable',
           cwd: project.cwd,
           codexSessionId: targetCodexSessionId
@@ -305,8 +338,14 @@ async function main() {
   try {
     const { stdout } = await execFileAsync(
       path.join(__dirname, 'openclaw-adapter.sh'),
-      [sessionId, prompt, targetCwd, targetCodexSessionId],
-      { maxBuffer: 1024 * 1024 * 8, env: process.env }
+      [sessionId, prompt, targetCwd, targetCodexSessionId, backend],
+      {
+        maxBuffer: 1024 * 1024 * 8,
+        env: {
+          ...process.env,
+          MAC_CLI_BRIDGE_BACKEND: backend
+        }
+      }
     );
 
     let data;
@@ -321,6 +360,7 @@ async function main() {
     if (resolvedCodexSessionId) {
       const updatedStore = recordSessionTurn(store, {
         chatId,
+        backend,
         codexSessionId: resolvedCodexSessionId,
         cwd: targetCwd,
         userPrompt,
@@ -336,6 +376,7 @@ async function main() {
       codexSessionId: resolvedCodexSessionId,
       meta: buildMeta({
         commandType: metaCommandType,
+        backend,
         modeAction: 'enable',
         cwd: targetCwd,
         codexSessionId: resolvedCodexSessionId

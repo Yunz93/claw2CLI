@@ -21,7 +21,7 @@ Debug view of in-memory sidecar sessions.
 ```json
 {
   "sessionId": "wx:chat_id",
-  "backend": "codex-exec",
+  "backend": "codex",
   "cwd": "/path/to/workspace"
 }
 ```
@@ -49,9 +49,9 @@ Read buffered events for the session.
 }
 ```
 
-For oneshot backends such as `codex-exec` and `codex-echo`, the final answer is returned in `finalText`.
+For oneshot backends such as `codex`, `claude`, `kimi`, and `codex-echo`, the final answer is returned in `finalText`.
 
-对于 `codex-exec`、`codex-echo` 这类 oneshot backend，最终答案会出现在 `finalText`。
+对于 `codex`、`claude`、`kimi`、`codex-echo` 这类 oneshot backend，最终答案会出现在 `finalText`。
 
 ### `POST /sessions/close`
 
@@ -73,7 +73,7 @@ For oneshot backends such as `codex-exec` and `codex-echo`, the final answer is 
 - `MAC_CLI_BRIDGE_PROJECT_ROOT`: base directory used for `/codex <project-name>` resolution
 - `MAC_CLI_BRIDGE_CWD`: default workspace used by the trigger and adapter
 - `MAC_CLI_BRIDGE_URL`: sidecar base URL, default `http://127.0.0.1:4317`
-- `MAC_CLI_BRIDGE_BACKEND`: backend name used by the adapter, default `codex-exec`
+- `MAC_CLI_BRIDGE_BACKEND`: backend name used by the adapter, default `codex-exec`; supported aliases include `codex`, `cc`, `claude`, and `kimi`
 - `MAC_CLI_BRIDGE_TIMEOUT_MS`: wait timeout for adapter calls, default `120000`
 
 ## OpenClaw Integration | OpenClaw 集成

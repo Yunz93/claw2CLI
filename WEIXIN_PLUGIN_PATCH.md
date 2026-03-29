@@ -6,17 +6,17 @@ This document describes the minimal plugin-side changes needed for `claw2cli`.
 
 ## Summary | 一句话说明
 
-`openclaw-weixin` should stay a transport layer. It should forward `/codex` handling to `claw2cli` and only keep login, message delivery, and mode switching.
+`openclaw-weixin` should stay a transport layer. It should forward `/codex`, `/cc`, `/claude`, and `/kimi` handling to `claw2cli` and only keep login, message delivery, and mode switching.
 
-`openclaw-weixin` 只做通道层适配：把 `/codex` 转交给 `claw2cli`，自己只保留登录、消息收发和模式切换。
+`openclaw-weixin` 只做通道层适配：把 `/codex`、`/cc`、`/claude`、`/kimi` 转交给 `claw2cli`，自己只保留登录、消息收发和模式切换。
 
 ## What to change | 需要改什么
 
-### 1. Forward `/codex` to `claw2cli`
+### 1. Forward `/codex` / `/cc` / `/claude` / `/kimi` to `claw2cli`
 
-`src/messaging/slash-commands.ts` should not implement `/codex` session discovery or session ranking locally. It should pass the raw `/codex ...` text to `claw2cli`.
+`src/messaging/slash-commands.ts` should not implement session discovery or session ranking locally. It should pass the raw `/codex ...` / `/cc ...` / `/claude ...` / `/kimi ...` text to `claw2cli`.
 
-`src/messaging/slash-commands.ts` 不再本地实现 `/codex` 的 session 发现和排序逻辑，而是把原始 `/codex ...` 文本交给 `claw2cli`。
+`src/messaging/slash-commands.ts` 不再本地实现这些命令的 session 发现和排序逻辑，而是把原始 `/codex ...`、`/cc ...`、`/claude ...`、`/kimi ...` 文本交给 `claw2cli`。
 
 Keep these responsibilities in the plugin:
 
@@ -34,10 +34,10 @@ Keep these responsibilities in the plugin:
 
 Do not keep these responsibilities in the plugin:
 
-- scanning Codex session files for `/codex list`
+- scanning session files for `/codex list`, `/cc list`, `/claude list`, or `/kimi list`
 - maintaining recent-session ranking
 - applying workspace dedupe rules
-- wrapping the prompt before sending it to Codex
+- wrapping the prompt before sending it to the backend CLI
 
 插件层不要再做这些事：
 
@@ -121,6 +121,9 @@ Supported variables:
 The plugin can assume that `claw2cli` fully owns:
 
 - `/codex list`
+- `/cc list`
+- `/claude list`
+- `/kimi list`
 - numbered session selection
 - the `enable / keep / disable` decision
 - the final `replyText`
@@ -135,7 +138,7 @@ The plugin can assume that `claw2cli` fully owns:
 ## Recommended boundary | 推荐边界
 
 - `openclaw-weixin`: transport adapter only
-- `claw2cli`: Codex bridge and session policy owner
+- `claw2cli`: CLI bridge and session policy owner
 
 - `openclaw-weixin`：只做通道适配
-- `claw2cli`：负责 Codex bridge 和 session 策略
+- `claw2cli`：负责 CLI bridge 和 session 策略

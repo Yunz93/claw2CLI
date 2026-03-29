@@ -1,12 +1,12 @@
 # claw2cli
 
-用于微信里的 Codex 本地 CLI bridge。
+用于微信里的 Codex / Claude Code / Kimi 本地 CLI bridge。
 
 English README: [`README.en.md`](./README.en.md).
 
 ## 这是什么
 
-`claw2cli` 让你可以在 macOS 上通过微信使用 Codex。它保留 OpenClaw 的消息链路，只把 `/codex` 命令转给本地 CLI 会话。
+`claw2cli` 让你可以在 macOS 上通过微信使用 Codex、Claude Code 或 Kimi。它保留 OpenClaw 的消息链路，只把 `/codex`、`/cc`、`/claude`、`/kimi` 命令转给本地 CLI 会话。
 
 这个项目不是独立软件，必须先安装 OpenClaw 和微信通道插件。
 
@@ -23,8 +23,8 @@ English README: [`README.en.md`](./README.en.md).
 
 ## 能做什么
 
-- 从微信直接进入 Codex session
-- 列出 Mac 上最近的 Codex session
+- 从微信直接进入 Codex / Claude Code / Kimi session
+- 列出 Mac 上最近的对应 backend session
 - 回到同一个微信会话上次使用的 session
 - 通过编号切换 session 并继续对话
 - 切换前展示清晰的 session 预览
@@ -34,8 +34,8 @@ English README: [`README.en.md`](./README.en.md).
 - 已在 OpenClaw `2026.3.12 (6472949)` 上验证
 - 已在 `@tencent-weixin/openclaw-weixin` `1.0.2` 上验证
 - 本机需要可用的 `openclaw` CLI
-- 需要先安装并登录微信通道，`/codex` 才能工作
-- 微信插件需要把 `/codex` 处理转交给 `claw2cli`
+- 需要先安装并登录微信通道，`/codex`、`/cc`、`/claude`、`/kimi` 才能工作
+- 微信插件需要把这些命令处理转交给 `claw2cli`
 
 ## 怎么用
 
@@ -56,11 +56,14 @@ npm start
 /codex list
 /codex 2
 /codex 2 帮我继续刚才那个排查
+/cc list
+/claude list
+/kimi 2
 ```
 
 ## 微信侧适配
 
-`openclaw-weixin` 只负责通道层能力，比如登录、消息收发和模式切换；`/codex` 的 session 策略由 `claw2cli` 统一负责。
+`openclaw-weixin` 只负责通道层能力，比如登录、消息收发和模式切换；`/codex`、`/cc`、`/claude`、`/kimi` 的 session 策略由 `claw2cli` 统一负责。
 
 如果你是从一个干净的 OpenClaw 微信环境接入，请按 [`WEIXIN_PLUGIN_PATCH.md`](./WEIXIN_PLUGIN_PATCH.md) 里的插件侧改动处理。
 
@@ -70,7 +73,7 @@ npm start
 
 - macOS
 - Node.js 18+
-- Codex CLI
+- Codex CLI、Claude Code CLI、Kimi CLI（按你要用的 backend 安装）
 - 已安装并启用 OpenClaw 微信通道
 
 ## 更多细节
