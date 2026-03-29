@@ -1,74 +1,54 @@
 # OpenClaw Weixin Plugin Patch Notes
 
-This file documents the minimal changes required in the `openclaw-weixin` plugin to integrate `claw2cli`.
+This document describes the minimal plugin-side changes needed for `claw2cli`.
 
-本文档整理 `openclaw-weixin` 插件侧为接入 `claw2cli` 所需的最小改动，方便开源时单独说明边界。
+本文档说明接入 `claw2cli` 时，`openclaw-weixin` 侧需要做的最小改动。
 
-## Goal | 目标
+## Summary | 一句话说明
 
-Keep Weixin as a transport adapter and move `/codex` session logic into `claw2cli`.
+`openclaw-weixin` should stay a transport layer. It should forward `/codex` handling to `claw2cli` and only keep login, message delivery, and mode switching.
 
-让微信插件只负责消息通道和状态切换，把 `/codex` 的 session 发现、列表、选择和续聊逻辑下沉到 `claw2cli`。
+`openclaw-weixin` 只做通道层适配：把 `/codex` 转交给 `claw2cli`，自己只保留登录、消息收发和模式切换。
 
-## Files Touched | 涉及文件
+## What to change | 需要改什么
 
-- `src/messaging/slash-commands.ts`
-- `src/messaging/codex-session.ts`
+### 1. Forward `/codex` to `claw2cli`
 
-Plugin path in the current local setup:
+`src/messaging/slash-commands.ts` should not implement `/codex` session discovery or session ranking locally. It should pass the raw `/codex ...` text to `claw2cli`.
 
-当前本机上的插件路径：
+`src/messaging/slash-commands.ts` 不再本地实现 `/codex` 的 session 发现和排序逻辑，而是把原始 `/codex ...` 文本交给 `claw2cli`。
 
-- `/Users/yunz/.openclaw/extensions/openclaw-weixin/src/messaging/slash-commands.ts`
-- `/Users/yunz/.openclaw/extensions/openclaw-weixin/src/messaging/codex-session.ts`
+Keep these responsibilities in the plugin:
 
-## Required Changes | 必要修改
+- authorization checks
+- calling the bridge script
+- applying bridge metadata to local active mode
+- sending `replyText` back to WeChat
 
-### 1. Route `/codex` through `claw2cli`
-
-`slash-commands.ts` should stop implementing `/codex` business rules locally and always delegate the raw command text to `claw2cli`.
-
-`slash-commands.ts` 不再自己实现 `/codex` 的业务分支，而是把原始 `/codex ...` 文本统一交给 `claw2cli`。
-
-What the plugin still does:
-
-- authorization check
-- call bridge script
-- update local active mode based on bridge metadata
-- send `replyText` back to WeChat
-
-插件层仍保留的职责：
+插件层只保留这些职责：
 
 - 权限校验
 - 调用 bridge 脚本
 - 根据 bridge 返回的 metadata 更新本地 active mode
 - 把 `replyText` 回发给微信
 
-What the plugin should not do anymore:
+Do not keep these responsibilities in the plugin:
 
-- scan Codex session files itself for `/codex list`
-- implement its own recent-session ranking
-- implement its own workspace dedupe policy
-- decide prompt wrapping rules for Codex input
+- scanning Codex session files for `/codex list`
+- maintaining recent-session ranking
+- applying workspace dedupe rules
+- wrapping the prompt before sending it to Codex
 
-插件层不应再做的事：
+插件层不要再做这些事：
 
 - 自己扫描 Codex session 文件来实现 `/codex list`
-- 自己实现 recent session 排序
+- 自己维护 recent session 排序
 - 自己实现按工作空间去重
-- 自己决定发给 Codex 的 prompt 包装规则
+- 自己包装发送给 Codex 的 prompt
 
-### 2. Accept bridge metadata
+### 2. Persist bridge metadata
 
-`codex-session.ts` needs to accept and persist metadata returned by `claw2cli`:
-
-- `modeAction`
-- `commandType`
-- `cwd`
-- `projectName`
-- `codexSessionId`
-
-`codex-session.ts` 需要接收并保存 `claw2cli` 返回的 metadata，用来同步插件本地状态：
+`src/messaging/codex-session.ts` should accept and store these fields returned by `claw2cli`:
 
 - `modeAction`
 - `commandType`
@@ -76,29 +56,47 @@ What the plugin should not do anymore:
 - `projectName`
 - `codexSessionId`
 
-`modeAction` drives session mode transitions:
+`src/messaging/codex-session.ts` 需要接收并保存 `claw2cli` 返回的这些字段：
 
-- `enable`: keep Codex mode active and update session state
-- `keep`: do not change active mode, but allow informational replies such as `/codex list`
+- `modeAction`
+- `commandType`
+- `cwd`
+- `projectName`
+- `codexSessionId`
+
+`modeAction` means:
+
+- `enable`: keep Codex mode active
+- `keep`: leave the current mode unchanged
 - `disable`: exit Codex mode and clear plugin-side session state
 
-### 3. Forward plain follow-up messages in active mode
+`modeAction` 的含义：
 
-When Codex mode is active and the user sends a non-slash message, the plugin should forward it through the same bridge entrypoint.
+- `enable`：保持 Codex mode
+- `keep`：保持当前状态不变
+- `disable`：退出 Codex mode，并清理插件侧 session 状态
 
-当 Codex mode 已激活且用户发送普通文本时，插件应继续通过同一个 bridge 入口转发。
+### 3. Forward plain follow-up messages
+
+When Codex mode is active and the user sends a normal message, forward it through the same bridge entrypoint.
+
+当 Codex mode 已激活且用户发送普通消息时，继续通过同一个 bridge 入口转发。
 
 Current implementation detail:
 
 - plain messages are normalized to `/codex <user_message>` before invoking `wechat-auto-reply.js`
 
-当前实现细节：
+当前实现方式：
 
-- 普通文本会先被规范成 `/codex <用户消息>`，再调用 `wechat-auto-reply.js`
+- 普通消息会先被规范成 `/codex <用户消息>`，再调用 `wechat-auto-reply.js`
 
-### 4. Keep script paths configurable
+### 4. Keep paths configurable
 
-The plugin currently relies on environment variables for bridge integration and should keep doing so:
+Keep bridge integration controlled by environment variables instead of hardcoding private machine paths.
+
+继续用环境变量控制 bridge 集成，不要硬编码私有机器路径。
+
+Supported variables:
 
 - `MAC_CLI_BRIDGE_AUTO_REPLY_SCRIPT`
 - `MAC_CLI_BRIDGE_NODE_BIN`
@@ -108,36 +106,36 @@ The plugin currently relies on environment variables for bridge integration and 
 - `MAC_CLI_BRIDGE_URL`
 - `MAC_CLI_BRIDGE_BACKEND`
 
-插件与 bridge 的连接应继续保持环境变量可配置，不要把 `claw2cli` 路径硬编码成私有机器路径。
+支持的环境变量：
 
-## Behavioral Contract | 行为约定
+- `MAC_CLI_BRIDGE_AUTO_REPLY_SCRIPT`
+- `MAC_CLI_BRIDGE_NODE_BIN`
+- `MAC_CLI_BRIDGE_TIMEOUT_MS`
+- `MAC_CLI_BRIDGE_PROJECT_ROOT`
+- `MAC_CLI_BRIDGE_CWD`
+- `MAC_CLI_BRIDGE_URL`
+- `MAC_CLI_BRIDGE_BACKEND`
 
-The plugin can assume:
+## What `claw2cli` owns | `claw2cli` 负责什么
 
-- `claw2cli` fully owns `/codex list`
-- `claw2cli` fully owns numbered session selection
-- `claw2cli` decides whether the next step is `enable`, `keep`, or `disable`
-- `replyText` is already the final user-facing WeChat text
+The plugin can assume that `claw2cli` fully owns:
 
-插件可以把下面这些都视为 `claw2cli` 的职责：
+- `/codex list`
+- numbered session selection
+- the `enable / keep / disable` decision
+- the final `replyText`
 
-- `/codex list` 的结果生成
-- 编号选 session 的规则
-- 是否 `enable / keep / disable` 的模式切换决策
-- 最终返回给微信的文案生成
+插件可以直接假设下面这些都由 `claw2cli` 负责：
 
-## Recommended Boundary | 推荐边界
+- `/codex list`
+- 编号选择 session
+- `enable / keep / disable` 的状态判断
+- 最终 `replyText`
 
-Use this split if the project is going to be open-sourced:
+## Recommended boundary | 推荐边界
 
 - `openclaw-weixin`: transport adapter only
 - `claw2cli`: Codex bridge and session policy owner
 
-如果项目准备开源，推荐边界如下：
-
-- `openclaw-weixin` 只做通道适配
-- `claw2cli` 负责 Codex bridge 和 session 策略
-
-This keeps the plugin generic and prevents channel-specific business logic from being duplicated across integrations.
-
-这样做的好处是：微信插件保持通用，渠道相关以外的业务逻辑不会在多个接入层重复实现。
+- `openclaw-weixin`：只做通道适配
+- `claw2cli`：负责 Codex bridge 和 session 策略
