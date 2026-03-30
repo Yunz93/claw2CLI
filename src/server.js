@@ -11,6 +11,7 @@ import { buildFinalText } from './final-text.js';
 const PORT = process.env.MAC_CLI_BRIDGE_PORT || 4317;
 const sessions = new Map();
 const ONESHOT_STALE_MS = Number(process.env.MAC_CLI_BRIDGE_ONESHOT_STALE_MS || 15000);
+const DEFAULT_WAIT_TIMEOUT_MS = Number(process.env.MAC_CLI_BRIDGE_TIMEOUT_MS || 1800000);
 const USER_LOCAL_BIN = `${process.env.HOME || '/Users/yunz'}/.local/bin`;
 
 function isExecutableFile(filePath) {
@@ -137,20 +138,22 @@ function buildBackendCommand({ backend, cwd, codexSessionId }) {
   }
 
   if (normalizedBackend === 'claude') {
-    const sessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
-    const resumeArg = codexSessionId ? '--resume' : '--session-id';
     const claudeBin = resolveExecutable('claude', [`${USER_LOCAL_BIN}/claude`]);
+    const sessionArgs = codexSessionId ? ['--resume', codexSessionId] : [];
     return {
-      command: '/bin/bash',
+      command: claudeBin,
       args: [
-        '-lc',
-        `prompt="$(cat)"; exec ${JSON.stringify(claudeBin)} -p --output-format text --dangerously-skip-permissions ${resumeArg} "$CLI_SESSION_ID" "$prompt"`
+        '--print',
+        '--input-format',
+        'text',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--dangerously-skip-permissions',
+        ...sessionArgs
       ],
       mode: 'oneshot',
-      output: 'raw',
-      env: {
-        CLI_SESSION_ID: sessionId
-      }
+      output: 'jsonl',
     };
   }
 
@@ -184,9 +187,13 @@ function attachOutput(state) {
     const rl = readline.createInterface({ input: state.child.stdout });
     rl.on('line', line => {
       if (!line.trim()) return;
+      state.stdoutChunks.push(line + '\n');
       try {
         const obj = JSON.parse(line);
         state.buffer.push({ type: 'jsonl', data: obj, ts: Date.now() });
+        if (state.backend === 'claude' && obj.type === 'system' && obj.subtype === 'init' && obj.session_id) {
+          state.codexSessionId = obj.session_id;
+        }
         if (obj.type === 'thread.started' && obj.thread_id) {
           state.codexSessionId = obj.thread_id;
         }
@@ -227,6 +234,22 @@ function getFinalText(state) {
   return buildFinalText(state.finalMessages, state.stdoutChunks, state.stderrChunks);
 }
 
+function getClaudeFailureText(state) {
+  for (const entry of state.buffer) {
+    if (entry.type !== 'jsonl' || !entry.data || typeof entry.data !== 'object') continue;
+    const data = entry.data;
+    if (
+      data.type === 'system' &&
+      data.subtype === 'api_retry' &&
+      data.error_status === 401 &&
+      data.error === 'authentication_failed'
+    ) {
+      return 'Claude Code 认证失败（401 authentication_failed）';
+    }
+  }
+  return null;
+}
+
 function cleanupState(state) {
   try { state.child.kill('SIGTERM'); } catch {}
   state.closed = true;
@@ -241,7 +264,9 @@ function isStaleOneshot(state) {
 function openSession({ sessionId, backend = 'codex-echo', cwd = process.cwd(), codexSessionId = null }) {
   const rawBackend = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
   const normalizedBackend = rawBackend === 'codex-echo' ? 'codex-echo' : normalizeBackendName(backend, 'codex');
-  const resolvedSessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
+  const resolvedSessionId = normalizedBackend === 'claude'
+    ? (codexSessionId || null)
+    : ensureBackendSessionId(normalizedBackend, codexSessionId);
   if (sessions.has(sessionId)) {
     const existing = sessions.get(sessionId);
     if (
@@ -303,9 +328,33 @@ function getOrReopenSession(sessionId) {
   return state;
 }
 
-async function waitForCompletion(state, timeoutMs = 120000, pollMs = 400) {
+async function waitForCompletion(state, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS, pollMs = 400) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (state.backend === 'claude') {
+      if (state.finalMessages.length > 0) {
+        const finalText = getFinalText(state);
+        cleanupState(state);
+        return {
+          done: true,
+          codexSessionId: state.codexSessionId ?? null,
+          exitCode: state.exitCode ?? null,
+          exitSignal: state.exitSignal ?? null,
+          finalText
+        };
+      }
+      const failureText = getClaudeFailureText(state);
+      if (failureText) {
+        cleanupState(state);
+        return {
+          done: true,
+          codexSessionId: state.codexSessionId ?? null,
+          exitCode: state.exitCode ?? null,
+          exitSignal: state.exitSignal ?? null,
+          finalText: failureText
+        };
+      }
+    }
     if (state.closed) {
       return {
         done: true,
@@ -324,6 +373,10 @@ async function waitForCompletion(state, timeoutMs = 120000, pollMs = 400) {
     timeout: true,
     finalText: getFinalText(state)
   };
+}
+
+function getWaitTimeoutMs(state, requestedTimeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
+  return requestedTimeoutMs;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -410,7 +463,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const state = sessions.get(body.sessionId);
       if (!state) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-      const result = await waitForCompletion(state, body.timeoutMs || 120000);
+      const result = await waitForCompletion(state, getWaitTimeoutMs(state, body.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS));
       return sendJson(res, 200, { ok: true, sessionId: body.sessionId, ...result });
     }
 

@@ -9,7 +9,7 @@ PROMPT="${2:-}"
 CWD="${3:-${MAC_CLI_BRIDGE_CWD:-$DEFAULT_PROJECT_ROOT}}"
 CLI_SESSION_ID="${4:-}"
 BACKEND="${5:-${MAC_CLI_BRIDGE_BACKEND:-codex-exec}}"
-TIMEOUT_MS="${MAC_CLI_BRIDGE_TIMEOUT_MS:-120000}"
+TIMEOUT_MS="${MAC_CLI_BRIDGE_TIMEOUT_MS:-1800000}"
 
 if [[ -z "$SESSION_ID" || -z "$PROMPT" ]]; then
   echo "usage: $0 <session_id> <prompt> [cwd] [cli_session_id] [backend]" >&2

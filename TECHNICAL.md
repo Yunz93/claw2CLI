@@ -45,7 +45,7 @@ Read buffered events for the session.
 ```json
 {
   "sessionId": "wx:chat_id",
-  "timeoutMs": 120000
+  "timeoutMs": 1800000
 }
 ```
 
@@ -74,7 +74,7 @@ For oneshot backends such as `codex`, `claude`, `kimi`, and `codex-echo`, the fi
 - `MAC_CLI_BRIDGE_CWD`: default workspace used by the trigger and adapter
 - `MAC_CLI_BRIDGE_URL`: sidecar base URL, default `http://127.0.0.1:4317`
 - `MAC_CLI_BRIDGE_BACKEND`: backend name used by the adapter, default `codex-exec`; supported aliases include `codex`, `cc`, `claude`, and `kimi`
-- `MAC_CLI_BRIDGE_TIMEOUT_MS`: wait timeout for adapter calls, default `120000`
+- `MAC_CLI_BRIDGE_TIMEOUT_MS`: wait timeout for adapter calls, default `1800000`
 
 ## OpenClaw Integration | OpenClaw 集成
 
