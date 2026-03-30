@@ -1,6 +1,8 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 
 import { normalizeBackendName } from './cli-backends.js';
@@ -9,6 +11,50 @@ import { buildFinalText } from './final-text.js';
 const PORT = process.env.MAC_CLI_BRIDGE_PORT || 4317;
 const sessions = new Map();
 const ONESHOT_STALE_MS = Number(process.env.MAC_CLI_BRIDGE_ONESHOT_STALE_MS || 15000);
+const USER_LOCAL_BIN = `${process.env.HOME || '/Users/yunz'}/.local/bin`;
+
+function isExecutableFile(filePath) {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveExecutable(commandName, preferredPaths = []) {
+  const candidates = [
+    ...preferredPaths,
+    ...String(process.env.PATH || '')
+      .split(path.delimiter)
+      .filter(Boolean)
+      .map(dir => path.join(dir, commandName)),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && path.isAbsolute(candidate) && isExecutableFile(candidate)) {
+      return candidate;
+    }
+  }
+
+  return commandName;
+}
+
+function buildSpawnEnv(extraEnv = {}) {
+  const currentPath = process.env.PATH || '';
+  const pathParts = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    USER_LOCAL_BIN,
+    currentPath,
+  ].filter(Boolean);
+  const dedupedPath = [...new Set(pathParts.join(':').split(':').filter(Boolean))].join(':');
+  return {
+    ...process.env,
+    PATH: dedupedPath,
+    ...extraEnv,
+  };
+}
 
 function sendJson(res, code, data) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -93,11 +139,12 @@ function buildBackendCommand({ backend, cwd, codexSessionId }) {
   if (normalizedBackend === 'claude') {
     const sessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
     const resumeArg = codexSessionId ? '--resume' : '--session-id';
+    const claudeBin = resolveExecutable('claude', [`${USER_LOCAL_BIN}/claude`]);
     return {
       command: '/bin/bash',
       args: [
         '-lc',
-        `prompt="$(cat)"; exec claude -p --output-format text --dangerously-skip-permissions ${resumeArg} "$CLI_SESSION_ID" "$prompt"`
+        `prompt="$(cat)"; exec ${JSON.stringify(claudeBin)} -p --output-format text --dangerously-skip-permissions ${resumeArg} "$CLI_SESSION_ID" "$prompt"`
       ],
       mode: 'oneshot',
       output: 'raw',
@@ -109,11 +156,12 @@ function buildBackendCommand({ backend, cwd, codexSessionId }) {
 
   if (normalizedBackend === 'kimi') {
     const sessionId = ensureBackendSessionId(normalizedBackend, codexSessionId);
+    const kimiBin = resolveExecutable('kimi', [`${USER_LOCAL_BIN}/kimi`]);
     return {
       command: '/bin/bash',
       args: [
         '-lc',
-        'prompt="$(cat)"; exec kimi --quiet --session "$CLI_SESSION_ID" --prompt "$prompt"'
+        `prompt="$(cat)"; exec ${JSON.stringify(kimiBin)} --quiet --session "$CLI_SESSION_ID" --prompt "$prompt"`
       ],
       mode: 'oneshot',
       output: 'raw',
@@ -209,7 +257,7 @@ function openSession({ sessionId, backend = 'codex-echo', cwd = process.cwd(), c
   const spec = buildBackendCommand({ backend: normalizedBackend, cwd, codexSessionId: resolvedSessionId });
   const child = spawn(spec.command, spec.args, {
     cwd,
-    env: { ...process.env, ...(spec.env || {}) },
+    env: buildSpawnEnv(spec.env || {}),
     stdio: ['pipe', 'pipe', 'pipe']
   });
   const state = {

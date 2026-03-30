@@ -14,9 +14,10 @@ if (!chatId || !text) usage();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const triggerScriptPath = path.join(__dirname, 'wechat-trigger.js');
+const rawPromptMode = process.env.MAC_CLI_BRIDGE_RAW_PROMPT === '1';
 
 const trimmed = text.trim();
-if (!/^\/(codex|claude|cc|kimi)(?:\s|$)/i.test(trimmed)) {
+if (!rawPromptMode && !/^\/(codex|claude|cc|kimi)(?:\s|$)/i.test(trimmed)) {
   console.log(JSON.stringify({ ok: false, ignored: true, reason: 'missing_prefix' }, null, 2));
   process.exit(0);
 }

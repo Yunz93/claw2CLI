@@ -18,7 +18,7 @@
     <key>MAC_CLI_BRIDGE_PORT</key>
     <string>4317</string>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/Users/yunz/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key>
   <string>__PROJECT_ROOT__/state/stdout.log</string>

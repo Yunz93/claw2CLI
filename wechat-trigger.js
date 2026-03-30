@@ -121,7 +121,11 @@ async function main() {
   if (!chatId || !text) usage();
 
   const cwd = path.resolve(cwdArg || process.env.MAC_CLI_BRIDGE_CWD || DEFAULT_PROJECT_ROOT);
-  const command = parseCodexCommand(text);
+  const rawPromptMode = process.env.MAC_CLI_BRIDGE_RAW_PROMPT === '1';
+  const envBackend = normalizeBackendName(process.env.MAC_CLI_BRIDGE_BACKEND || 'codex', 'codex');
+  const command = rawPromptMode
+    ? { ok: true, type: 'prompt', backend: envBackend, prompt: text.trim() }
+    : parseCodexCommand(text);
   if (!command.ok) {
     console.log(JSON.stringify({ ok: false, ignored: true, reason: command.reason }, null, 2));
     process.exit(0);

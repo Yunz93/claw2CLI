@@ -113,10 +113,7 @@ export function renderSessionList(sessions, activeSessionId = null, options = {}
 }
 
 export function renderSelectedSessionPreview(session, options = {}) {
-  const {
-    commandPrefix = getBackendCommandPrefix(session?.backend),
-    intro = null
-  } = options;
+  const { intro = null } = options;
   const lastMessages = getLastMessages(session, 2);
   const backendLabel = getBackendDisplayName(session?.backend);
   const lines = [];
@@ -133,8 +130,6 @@ export function renderSelectedSessionPreview(session, options = {}) {
       lines.push(formatMessageLine(message));
     }
   }
-
-  lines.push(`现在直接发 \`${commandPrefix} 你的消息\` 就会继续这个 session。`);
   return lines.join('\n');
 }
 
