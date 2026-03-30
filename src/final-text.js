@@ -1,4 +1,4 @@
-export function buildFinalText(finalMessages = [], stdoutChunks = []) {
+export function buildFinalText(finalMessages = [], stdoutChunks = [], stderrChunks = []) {
   const messageText = finalMessages
     .map(message => String(message || '').trim())
     .filter(Boolean)
@@ -7,5 +7,8 @@ export function buildFinalText(finalMessages = [], stdoutChunks = []) {
   if (messageText) return messageText;
 
   const rawText = stdoutChunks.join('').trim();
-  return rawText || null;
+  if (rawText) return rawText;
+
+  const errorText = stderrChunks.join('').trim();
+  return errorText || null;
 }

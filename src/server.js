@@ -208,7 +208,9 @@ function attachOutput(state) {
   }
 
   state.child.stderr.on('data', chunk => {
-    state.buffer.push({ type: 'stderr', text: String(chunk), ts: Date.now() });
+    const text = String(chunk);
+    state.buffer.push({ type: 'stderr', text, ts: Date.now() });
+    state.stderrChunks.push(text);
     state.updatedAt = Date.now();
   });
 
@@ -222,7 +224,7 @@ function attachOutput(state) {
 }
 
 function getFinalText(state) {
-  return buildFinalText(state.finalMessages, state.stdoutChunks);
+  return buildFinalText(state.finalMessages, state.stdoutChunks, state.stderrChunks);
 }
 
 function cleanupState(state) {
@@ -275,6 +277,7 @@ function openSession({ sessionId, backend = 'codex-echo', cwd = process.cwd(), c
     buffer: [],
     finalMessages: [],
     stdoutChunks: [],
+    stderrChunks: [],
     closed: false,
     busy: false
   };
@@ -375,6 +378,7 @@ const server = http.createServer(async (req, res) => {
       state.updatedAt = Date.now();
       state.finalMessages = [];
       state.stdoutChunks = [];
+      state.stderrChunks = [];
       state.child.stdin.write((body.message || '') + '\n');
       if (state.mode === 'oneshot') {
         state.child.stdin.end();
