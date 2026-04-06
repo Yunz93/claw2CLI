@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  clearActiveSession,
   getActiveSessionIdForChat,
   getLastMessages,
   getRecentSessionByIndex,
@@ -36,6 +37,13 @@ test('parseCodexCommand handles list, select, and plain prompt', () => {
     type: 'list',
     backend: 'codex',
     limit: 9
+  });
+
+  assert.deepEqual(parseCodexCommand('/codex new /tmp/workspace'), {
+    ok: true,
+    type: 'new',
+    backend: 'codex',
+    workspacePath: '/tmp/workspace'
   });
 
   assert.deepEqual(parseCodexCommand('/codex 2 继续'), {
@@ -73,6 +81,13 @@ test('parseCodexCommand handles list, select, and plain prompt', () => {
     type: 'list',
     backend: 'claude',
     limit: 3
+  });
+
+  assert.deepEqual(parseCodexCommand('/claude new ../repo'), {
+    ok: true,
+    type: 'new',
+    backend: 'claude',
+    workspacePath: '../repo'
   });
 
   assert.deepEqual(parseCodexCommand('/kimi 7'), {
@@ -122,6 +137,34 @@ test('session store tracks active session and recent messages', () => {
     getLastMessages(getRecentSessionByIndex(store, 2), 2).map(message => message.text),
     ['第一问', '第一答']
   );
+});
+
+test('session store can clear active session binding for a chat/backend', () => {
+  let store = rememberActiveSession({
+    version: 1,
+    activeByChatId: {},
+    sessions: []
+  }, {
+    chatId: 'chat-a',
+    backend: 'codex',
+    codexSessionId: 'thread-1',
+    cwd: '/tmp/a'
+  });
+
+  store = rememberActiveSession(store, {
+    chatId: 'chat-a',
+    backend: 'claude',
+    codexSessionId: 'thread-2',
+    cwd: '/tmp/b'
+  });
+
+  store = clearActiveSession(store, {
+    chatId: 'chat-a',
+    backend: 'codex'
+  });
+
+  assert.equal(getActiveSessionIdForChat(store, 'chat-a', 'codex'), null);
+  assert.equal(getActiveSessionIdForChat(store, 'chat-a', 'claude'), 'thread-2');
 });
 
 test('session store keeps backend-specific sessions separate per cwd', () => {

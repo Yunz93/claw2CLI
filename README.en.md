@@ -27,6 +27,7 @@ This project is not standalone. It requires OpenClaw and the Weixin channel plug
 - List recent sessions for the selected backend on your Mac
 - Re-enter the last session used by the same chat
 - Switch sessions by number and continue the conversation
+- Explicitly start fresh in a chosen workspace
 - Show a clean preview of the target session before you continue
 
 ## Before you start
@@ -54,12 +55,16 @@ If this chat has already used a session before, `claw2cli` jumps back to that on
 
 ```text
 /codex list
+/codex new /Users/yunz/Code/VibeCoding/claw2cli
 /codex 2
 /codex 2 help me continue the earlier investigation
 /cc list
+/cc new ../other-project
 /claude list
 /kimi 2
 ```
+
+`/codex new {workspace_path}` switches the chat into the target workspace and makes the next message start a fresh session there instead of resuming the previously bound one. It also expands leading `~`, creates the directory if it does not exist yet, and returns a clearer error if the target path exists but is not a directory.
 
 ## Weixin side setup
 

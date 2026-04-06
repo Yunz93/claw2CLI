@@ -7,6 +7,7 @@
 - 当前 adapter 只支持会结束的 `oneshot` backend
 - `/codex list`、`/cc list`、`/claude list`、`/kimi list` 默认只展示最近激活的 5 个对应 backend session
 - `/codex {编号}`、`/cc {编号}`、`/claude {编号}`、`/kimi {编号}` 可以切换到目标 session；如果只发编号，会直接回最近两条消息预览
+- `/codex new {workspace_path}`、`/cc new {workspace_path}`、`/claude new {workspace_path}`、`/kimi new {workspace_path}` 会切到指定工作空间，并让下一条消息新开 session；支持 `~` 展开，目录不存在时会自动创建，路径错误时会返回更明确提示
 
 ## 触发器脚本
 
@@ -36,6 +37,14 @@ node "$PROJECT_ROOT/wechat-trigger.js" \
 node "$PROJECT_ROOT/wechat-trigger.js" \
   o9cq80_EfrcDvilGHP5_xvHSzQSg@im.wechat \
   "/cc list"
+```
+
+切到指定工作空间并准备新开 session：
+
+```bash
+node "$PROJECT_ROOT/wechat-trigger.js" \
+  o9cq80_EfrcDvilGHP5_xvHSzQSg@im.wechat \
+  "/codex new /Users/yunz/Code/VibeCoding/claw2cli"
 ```
 
 切到第 2 个 session 并继续提问：

@@ -13,6 +13,7 @@ import {
   normalizeBackendName
 } from './src/cli-backends.js';
 import {
+  clearActiveSession,
   findLatestSessionByCwd,
   findSessionByCodexSessionId,
   getActiveSessionIdForChat,
@@ -30,6 +31,7 @@ import {
   renderSelectedSessionPreview,
   renderSessionList
 } from './src/wechat-command.js';
+import { resolveWorkspacePath } from './src/workspace-path.js';
 
 function usage() {
   console.error('usage: wechat-trigger.js <chat_id> <text> [cwd] [session_id]');
@@ -200,14 +202,52 @@ async function main() {
     });
     printHandledResponse({
       sessionId,
-      codexSessionId: persistedActiveSessionId,
+      // `list` is a pure view action: do not hand back a bound session id,
+      // otherwise plugin-side consumers may accidentally reactivate mode.
+      codexSessionId: null,
       finalText,
       meta: buildMeta({
         commandType: 'list',
         backend,
         modeAction: 'keep',
         cwd,
-        codexSessionId: persistedActiveSessionId
+        codexSessionId: null
+      })
+    });
+    return;
+  }
+
+  if (command.type === 'new') {
+    const workspace = resolveWorkspacePath(command.workspacePath, cwd || DEFAULT_PROJECT_ROOT);
+    if (!workspace.ok) {
+      printHandledResponse({
+        sessionId,
+        codexSessionId: null,
+        finalText: workspace.message,
+        meta: buildMeta({
+          commandType: 'new',
+          backend,
+          modeAction: 'keep',
+          cwd,
+          codexSessionId: null
+        })
+      });
+      return;
+    }
+
+    const updatedStore = clearActiveSession(store, { chatId, backend });
+    await saveSessionStore(__dirname, updatedStore);
+
+    printHandledResponse({
+      sessionId,
+      codexSessionId: null,
+      finalText: `已切到工作空间 ${workspace.cwd}。下一条消息会在这里新开 ${backendLabel} session，发 /exit 退出。`,
+      meta: buildMeta({
+        commandType: 'new',
+        backend,
+        modeAction: 'enable',
+        cwd: workspace.cwd,
+        codexSessionId: null
       })
     });
     return;
@@ -311,6 +351,9 @@ async function main() {
           codexSessionId: targetCodexSessionId,
           cwd: project.cwd
         });
+        await saveSessionStore(__dirname, updatedStore);
+      } else {
+        const updatedStore = clearActiveSession(store, { chatId, backend });
         await saveSessionStore(__dirname, updatedStore);
       }
 

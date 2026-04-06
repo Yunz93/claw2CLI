@@ -76,6 +76,12 @@ Do not keep these responsibilities in the plugin:
 - `keep`：保持当前状态不变
 - `disable`：退出 Codex mode，并清理插件侧 session 状态
 
+For `/codex list` and equivalent list commands, treat the response as view-only.
+Do not enter or restore any backend mode from a list response, even if the chat had a previous session before.
+
+对于 `/codex list` 以及同类 list 命令，要把返回结果当成纯查看结果。
+即使这个微信会话之前绑定过 session，也不要因为 list 响应去进入或恢复任何 backend mode。
+
 ### 3. Forward plain follow-up messages
 
 When Codex mode is active and the user sends a normal message, forward it through the same bridge entrypoint.

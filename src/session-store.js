@@ -221,6 +221,18 @@ export function getRecentSessions(store, limit = 5, backend = null) {
   return sessions.slice(0, clampPositiveInt(limit, 5));
 }
 
+export function clearActiveSession(store, { chatId, backend = 'codex' }) {
+  const normalized = normalizeStore(store);
+  if (!chatId) return normalized;
+
+  const normalizedBackend = normalizeBackendName(backend, 'codex');
+  delete normalized.activeByChatId[getChatKey(chatId, normalizedBackend)];
+  if (normalizedBackend === 'codex') {
+    delete normalized.activeByChatId[chatId];
+  }
+  return normalized;
+}
+
 export function rememberActiveSession(store, { chatId, backend = 'codex', codexSessionId, cwd = '' }) {
   const normalized = normalizeStore(store);
   if (!chatId || !codexSessionId) return normalized;

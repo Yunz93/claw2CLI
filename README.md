@@ -27,6 +27,7 @@ English README: [`README.en.md`](./README.en.md).
 - 列出 Mac 上最近的对应 backend session
 - 回到同一个微信会话上次使用的 session
 - 通过编号切换 session 并继续对话
+- 在指定 workspace 下显式新开一个 session
 - 切换前展示清晰的 session 预览
 
 ## 使用前提
@@ -54,12 +55,16 @@ npm start
 
 ```text
 /codex list
+/codex new /Users/yunz/Code/VibeCoding/claw2cli
 /codex 2
 /codex 2 帮我继续刚才那个排查
 /cc list
+/cc new ../other-project
 /claude list
 /kimi 2
 ```
+
+`/codex new {workspace_path}` 会进入指定工作空间，并让下一条消息在该目录下新开 session，不会续用当前聊天之前绑定的旧 session。目标目录不存在时会自动创建，也支持 `~` 路径展开；如果目标路径已存在但不是文件夹，会返回更明确的错误提示。
 
 ## 微信侧适配
 

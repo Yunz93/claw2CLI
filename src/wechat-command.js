@@ -56,6 +56,16 @@ export function parseCodexCommand(text) {
     };
   }
 
+  const newMatch = body.match(/^new(?:\s+([\s\S]+))?$/i);
+  if (newMatch) {
+    return {
+      ok: true,
+      type: 'new',
+      backend,
+      workspacePath: (newMatch[1] || '').trim()
+    };
+  }
+
   const selectMatch = body.match(/^(\d+)(?:\s+([\s\S]*))?$/);
   if (selectMatch) {
     return {
@@ -113,7 +123,10 @@ export function renderSessionList(sessions, activeSessionId = null, options = {}
 }
 
 export function renderSelectedSessionPreview(session, options = {}) {
-  const { intro = null } = options;
+  const {
+    intro = null,
+    commandPrefix = getBackendCommandPrefix(session?.backend || 'codex')
+  } = options;
   const lastMessages = getLastMessages(session, 2);
   const backendLabel = getBackendDisplayName(session?.backend);
   const lines = [];
@@ -129,6 +142,10 @@ export function renderSelectedSessionPreview(session, options = {}) {
     for (const message of lastMessages) {
       lines.push(formatMessageLine(message));
     }
+  }
+
+  if (commandPrefix) {
+    lines.push(`继续发 \`${commandPrefix} 你的消息\` 就能接着聊。`);
   }
   return lines.join('\n');
 }
