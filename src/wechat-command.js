@@ -33,6 +33,27 @@ function buildSelectionHint(commandPrefix) {
   return `发 \`${commandPrefix} 编号\` 进入目标 session，或发 \`${commandPrefix} 编号 你的新消息\` 直接续聊。`;
 }
 
+function looksLikeWorkspacePath(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return false;
+
+  const unquoted = (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+  )
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+
+  return (
+    unquoted === '~' ||
+    unquoted.startsWith('~/') ||
+    unquoted.startsWith('./') ||
+    unquoted.startsWith('../') ||
+    unquoted.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(unquoted)
+  );
+}
+
 export function parseCodexCommand(text) {
   const trimmed = text.trim();
   const commandMatch = trimmed.match(/^\/(codex|claude|cc|kimi)(?:\s+([\s\S]*))?$/i);
@@ -58,12 +79,15 @@ export function parseCodexCommand(text) {
 
   const newMatch = body.match(/^new(?:\s+([\s\S]+))?$/i);
   if (newMatch) {
-    return {
-      ok: true,
-      type: 'new',
-      backend,
-      workspacePath: (newMatch[1] || '').trim()
-    };
+    const workspacePath = (newMatch[1] || '').trim();
+    if (!workspacePath || looksLikeWorkspacePath(workspacePath)) {
+      return {
+        ok: true,
+        type: 'new',
+        backend,
+        workspacePath
+      };
+    }
   }
 
   const selectMatch = body.match(/^(\d+)(?:\s+([\s\S]*))?$/);

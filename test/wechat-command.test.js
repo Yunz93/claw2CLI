@@ -46,6 +46,27 @@ test('parseCodexCommand handles list, select, and plain prompt', () => {
     workspacePath: '/tmp/workspace'
   });
 
+  assert.deepEqual(parseCodexCommand('/codex new'), {
+    ok: true,
+    type: 'new',
+    backend: 'codex',
+    workspacePath: ''
+  });
+
+  assert.deepEqual(parseCodexCommand('/codex new feature idea'), {
+    ok: true,
+    type: 'prompt',
+    backend: 'codex',
+    prompt: 'new feature idea'
+  });
+
+  assert.deepEqual(parseCodexCommand('/codex new "feature idea"'), {
+    ok: true,
+    type: 'prompt',
+    backend: 'codex',
+    prompt: 'new "feature idea"'
+  });
+
   assert.deepEqual(parseCodexCommand('/codex 2 继续'), {
     ok: true,
     type: 'select',
